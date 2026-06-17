@@ -1,17 +1,17 @@
 defmodule AppworkCache.Cache.Server do
   @moduledoc """
-  V2 LRU capped cache with ETS-backed concurrent reads.
+  V3 LRU + TTL capped cache with ETS-backed concurrent reads.
 
-  Cache hits read ETS directly, then promote the entry via a synchronous
-  GenServer touch. Misses are coordinated through this GenServer, which calls
-  upstream and evicts the least recently used distinct key when capacity is exceeded.
+  Cache hits read ETS directly when the entry is valid, then promote via a
+  synchronous GenServer touch. Misses and expired entries are coordinated
+  through this GenServer, which calls upstream and evicts LRU keys when full.
   """
 
   @behaviour AppworkCache.Cache
 
   use GenServer
 
-  alias AppworkCache.Cache.LRU
+  alias AppworkCache.Cache.{Entry, LRU}
   alias AppworkCache.{Request, Response}
 
   def start_link(opts) do
@@ -48,13 +48,18 @@ defmodule AppworkCache.Cache.Server do
     name = __MODULE__
     table = table_name(name)
     hash = Request.hash(request)
+    now = DateTime.utc_now()
 
     case :ets.lookup(table, hash) do
-      [{^hash, %Response{} = response}] ->
-        :ok = GenServer.call(name, {:touch, hash})
-        {:ok, response}
+      [{^hash, %Entry{} = entry}] ->
+        if Entry.valid?(entry, now) do
+          :ok = GenServer.call(name, {:touch, hash})
+          {:ok, entry.response}
+        else
+          GenServer.call(name, {:fetch, request, hash})
+        end
 
-      [] ->
+      _ ->
         GenServer.call(name, {:fetch, request, hash})
     end
   end
@@ -80,27 +85,46 @@ defmodule AppworkCache.Cache.Server do
 
   @impl true
   def handle_call({:fetch, request, hash}, _from, state) do
+    now = DateTime.utc_now()
+
     case :ets.lookup(state.table, hash) do
-      [{^hash, %Response{} = response}] ->
-        {:reply, {:ok, response}, %{state | queue: LRU.touch(state.queue, hash)}}
-
-      [] ->
-        case state.upstream.fetch(request) do
-          {:error, _} = error ->
-            {:reply, error, state}
-
-          {:ok, %Response{} = response} ->
-            :ets.insert(state.table, {hash, response})
-
-            {:ok, queue, evicted} = LRU.insert(state.queue, hash, state.cap)
-
-            if evicted do
-              :ets.delete(state.table, evicted)
-            end
-
-            {:reply, {:ok, response}, %{state | queue: queue}}
+      [{^hash, %Entry{} = entry}] ->
+        if Entry.valid?(entry, now) do
+          {:reply, {:ok, entry.response}, %{state | queue: LRU.touch(state.queue, hash)}}
+        else
+          fetch_miss(state, request, hash)
         end
+
+      _ ->
+        fetch_miss(state, request, hash)
     end
+  end
+
+  defp fetch_miss(state, request, hash) do
+    now = DateTime.utc_now()
+    state = invalidate(state, hash)
+
+    case state.upstream.fetch(request) do
+      {:error, _} = error ->
+        {:reply, error, state}
+
+      {:ok, %Response{} = response} ->
+        entry = Entry.new(response, now)
+        :ets.insert(state.table, {hash, entry})
+
+        {:ok, queue, evicted} = LRU.insert(state.queue, hash, state.cap)
+
+        if evicted do
+          :ets.delete(state.table, evicted)
+        end
+
+        {:reply, {:ok, response}, %{state | queue: queue}}
+    end
+  end
+
+  defp invalidate(%{table: table, queue: queue} = state, hash) do
+    :ets.delete(table, hash)
+    %{state | queue: LRU.remove(queue, hash)}
   end
 
   defp table_name(name) when is_atom(name), do: :"#{name}.Entries"

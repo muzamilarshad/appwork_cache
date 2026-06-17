@@ -38,6 +38,12 @@ defmodule AppworkCache.Cache.LRU do
   end
 
   @doc """
+  Removes `hash` from the queue if present.
+  """
+  @spec remove(queue(), hash()) :: queue()
+  def remove(queue, hash), do: List.delete(queue, hash)
+
+  @doc """
   Removes and returns the least recently used hash (front of queue).
   """
   @spec evict_lru(queue()) :: {queue(), hash() | nil}
