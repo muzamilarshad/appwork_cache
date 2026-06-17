@@ -2,40 +2,51 @@ defmodule AppworkCache.UpstreamTest do
   use ExUnit.Case, async: false
 
   alias AppworkCache.Request
-  alias AppworkCache.Upstreams.SlowUpstream
+  alias AppworkCache.Upstreams.UserStore
 
   setup do
-    SlowUpstream.stop()
-    {:ok, _pid} = SlowUpstream.start_link(sleep_ms: 30)
+    UserStore.stop()
+    {:ok, _pid} = UserStore.start_link(sleep_ms: 30)
 
-    on_exit(fn -> SlowUpstream.stop() end)
+    on_exit(fn -> UserStore.stop() end)
 
     :ok
   end
 
   describe "fetch/1" do
-    test "returns a response derived from the request id" do
-      req = %Request{id: "users/42"}
+    test "returns a seeded user for a known id" do
+      req = %Request{id: "users/1"}
 
-      assert %{body: %{id: "users/42", source: :upstream}} = SlowUpstream.fetch(req)
+      assert {:ok, %{body: %{id: "users/1", name: "User 1", email: "user1@example.com"}}} =
+               UserStore.fetch(req)
     end
 
-    test "increments call_count on each fetch" do
-      req = %Request{id: "users/42"}
+    test "returns not_found for an unknown id" do
+      req = %Request{id: "users/999"}
 
-      assert SlowUpstream.call_count() == 0
-
-      SlowUpstream.fetch(req)
-      assert SlowUpstream.call_count() == 1
-
-      SlowUpstream.fetch(req)
-      assert SlowUpstream.call_count() == 2
+      assert {:error, :not_found} = UserStore.fetch(req)
     end
 
-    test "sleeps to simulate a slow upstream" do
-      req = %Request{id: "users/42"}
+    test "increments call_count only on successful fetches" do
+      known = %Request{id: "users/1"}
+      unknown = %Request{id: "users/999"}
 
-      {elapsed_us, _} = :timer.tc(fn -> SlowUpstream.fetch(req) end)
+      assert UserStore.call_count() == 0
+
+      assert {:ok, _} = UserStore.fetch(known)
+      assert UserStore.call_count() == 1
+
+      assert {:error, :not_found} = UserStore.fetch(unknown)
+      assert UserStore.call_count() == 1
+
+      assert {:ok, _} = UserStore.fetch(known)
+      assert UserStore.call_count() == 2
+    end
+
+    test "sleeps to simulate a slow upstream for known users" do
+      req = %Request{id: "users/1"}
+
+      {elapsed_us, {:ok, _}} = :timer.tc(fn -> UserStore.fetch(req) end)
 
       assert elapsed_us >= 25_000
     end
