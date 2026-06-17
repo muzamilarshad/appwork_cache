@@ -20,7 +20,12 @@ defmodule AppworkCache.Cache.Server do
   def stop(name \\ __MODULE__) do
     case Process.whereis(name) do
       nil -> :ok
-      pid -> GenServer.stop(pid)
+      pid ->
+        try do
+          GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
     end
   end
 

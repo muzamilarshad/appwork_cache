@@ -23,7 +23,12 @@ defmodule AppworkCache.Upstreams.UserStore do
   def stop(name \\ __MODULE__) do
     case Process.whereis(name) do
       nil -> :ok
-      pid -> GenServer.stop(pid)
+      pid ->
+        try do
+          GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
     end
   end
 
@@ -34,6 +39,10 @@ defmodule AppworkCache.Upstreams.UserStore do
 
   def call_count(name \\ __MODULE__) do
     GenServer.call(name, :call_count)
+  end
+
+  def request_count(name \\ __MODULE__) do
+    GenServer.call(name, :request_count)
   end
 
   @impl true
@@ -50,12 +59,15 @@ defmodule AppworkCache.Upstreams.UserStore do
      %{
        table: table,
        sleep_ms: Keyword.get(opts, :sleep_ms, @default_sleep_ms),
-       call_count: 0
+       call_count: 0,
+       request_count: 0
      }}
   end
 
   @impl true
   def handle_call({:fetch, %Request{id: id}}, _from, state) do
+    state = %{state | request_count: state.request_count + 1}
+
     case :ets.lookup(state.table, id) do
       [{^id, user}] ->
         if state.sleep_ms > 0, do: Process.sleep(state.sleep_ms)
@@ -72,6 +84,10 @@ defmodule AppworkCache.Upstreams.UserStore do
 
   def handle_call(:call_count, _from, state) do
     {:reply, state.call_count, state}
+  end
+
+  def handle_call(:request_count, _from, state) do
+    {:reply, state.request_count, state}
   end
 
   defp seed_users(table) do
