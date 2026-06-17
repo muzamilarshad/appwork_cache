@@ -37,32 +37,37 @@ defmodule AppworkCache.Cache.ServerTest do
       assert UserStore.call_count() == 2
     end
 
-    test "FIFO eviction removes oldest entry when capacity exceeded" do
+    test "LRU eviction removes least recently used entry when capacity exceeded" do
       assert {:ok, _} = Server.fetch(req("users/1"))
       assert {:ok, _} = Server.fetch(req("users/2"))
       assert {:ok, _} = Server.fetch(req("users/3"))
 
       assert UserStore.call_count() == 3
 
+      # users/1 was LRU among distinct keys after users/3 was inserted.
       assert {:ok, _} = Server.fetch(req("users/1"))
       assert UserStore.call_count() == 4
     end
 
-    test "cache hit does not reorder FIFO eviction order" do
+    test "cache hit promotes entry in LRU order" do
       assert {:ok, _} = Server.fetch(req("users/1"))
       assert {:ok, _} = Server.fetch(req("users/2"))
       assert UserStore.call_count() == 2
 
-      # Hit does not promote users/1 ahead of users/2 in FIFO order.
+      # Hit promotes users/1 to MRU.
       assert {:ok, _} = Server.fetch(req("users/1"))
       assert UserStore.call_count() == 2
 
-      # users/3 evicts oldest insert (users/1), not users/2.
+      # users/3 evicts LRU users/2, not users/1.
       assert {:ok, _} = Server.fetch(req("users/3"))
       assert UserStore.call_count() == 3
 
-      assert {:ok, _} = Server.fetch(req("users/2"))
+      # users/1 still cached; promote again before users/2 returns.
+      assert {:ok, _} = Server.fetch(req("users/1"))
       assert UserStore.call_count() == 3
+
+      assert {:ok, _} = Server.fetch(req("users/2"))
+      assert UserStore.call_count() == 4
 
       assert {:ok, _} = Server.fetch(req("users/1"))
       assert UserStore.call_count() == 4
