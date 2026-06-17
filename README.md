@@ -21,7 +21,7 @@ mix test
 | V0      | Done    | Cache and upstream interfaces        |
 | V1      | Done    | Basic capped cache (FIFO) + ETS      |
 | V2      | Done    | LRU eviction on distinct keys        |
-| V3      | Pending | LRU + TTL expiration                 |
+| V3      | Done    | LRU + TTL expiration                 |
 | V4      | Pending | Near real-time O(1) fetch (optional) |
 
 Architecture notes: [docs/architecture.md](docs/architecture.md)
@@ -31,7 +31,7 @@ Architecture notes: [docs/architecture.md](docs/architecture.md)
 - `AppworkCache.Cache` — cache behaviour (`fetch/1`, `child_spec/1`)
 - `AppworkCache.Upstream` — upstream behaviour (`fetch/1`)
 - `AppworkCache.Request` — `%Request{id: ...}` with `hash/1`
-- `AppworkCache.Response` — `%Response{body: ...}`
+- `AppworkCache.Response` — `%Response{body: ..., ttl_seconds: ...}` with `ttl/1`
 
 ## V1 (complete)
 
@@ -44,4 +44,10 @@ Architecture notes: [docs/architecture.md](docs/architecture.md)
 - `AppworkCache.Cache.LRU` — pure LRU queue helpers (`touch/2`, `insert/3`)
 - `Cache.Server` promotes on cache hit via `GenServer.call({:touch, hash})`
 - LRU eviction of distinct keys when capacity exceeded
+
+## V3 (complete)
+
+- `AppworkCache.Cache.Entry` — `%Entry{response, expires_at}` stored in cache ETS
+- `Response.ttl/1` drives expiration; `UserStore` returns per-user `ttl_seconds`
+- Expired entries lazily invalidated on fetch (no background sweeper)
 - Errors (`{:error, :not_found}`) are not cached
