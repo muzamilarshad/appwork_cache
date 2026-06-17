@@ -83,7 +83,11 @@ defmodule AppworkCache.Cache.Server do
 
   @impl true
   def handle_call({:touch, hash}, _from, state) do
-    {:reply, :ok, %{state | queue: LRU.touch(state.queue, hash)}}
+    if :ets.member(state.table, hash) do
+      {:reply, :ok, %{state | queue: LRU.touch(state.queue, hash)}}
+    else
+      {:reply, :ok, state}
+    end
   end
 
   @impl true
