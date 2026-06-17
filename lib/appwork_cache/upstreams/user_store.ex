@@ -2,8 +2,8 @@ defmodule AppworkCache.Upstreams.UserStore do
   @moduledoc """
   Simulated slow user database backed by ETS.
 
-  Seeds `users/1` through `users/10` at startup. Each fetch sleeps to mimic
-  a slow query and increments `call_count/0` only on successful lookups.
+  Seeds `users/1` through `users/10` at startup. Each user has a distinct
+  `ttl_seconds` (e.g. `users/1` → 1s for expiry tests, `users/2` → 300s).
   """
 
   @behaviour AppworkCache.Upstream
@@ -22,7 +22,9 @@ defmodule AppworkCache.Upstreams.UserStore do
 
   def stop(name \\ __MODULE__) do
     case Process.whereis(name) do
-      nil -> :ok
+      nil ->
+        :ok
+
       pid ->
         try do
           GenServer.stop(pid)
@@ -72,7 +74,7 @@ defmodule AppworkCache.Upstreams.UserStore do
       [{^id, user}] ->
         if state.sleep_ms > 0, do: Process.sleep(state.sleep_ms)
 
-        response = %Response{body: user}
+        response = %Response{body: user, ttl_seconds: user.ttl_seconds}
         state = %{state | call_count: state.call_count + 1}
 
         {:reply, {:ok, response}, state}
@@ -93,7 +95,26 @@ defmodule AppworkCache.Upstreams.UserStore do
   defp seed_users(table) do
     for n <- 1..@user_count do
       id = "users/#{n}"
-      :ets.insert(table, {id, %{id: id, name: "User #{n}", email: "user#{n}@example.com"}})
+
+      user = %{
+        id: id,
+        name: "User #{n}",
+        email: "user#{n}@example.com",
+        ttl_seconds: ttl_for(n)
+      }
+
+      :ets.insert(table, {id, user})
     end
   end
+
+  defp ttl_for(1), do: 1
+  defp ttl_for(2), do: 300
+  defp ttl_for(3), do: 60
+  defp ttl_for(4), do: 120
+  defp ttl_for(5), do: 30
+  defp ttl_for(6), do: 180
+  defp ttl_for(7), do: 90
+  defp ttl_for(8), do: 240
+  defp ttl_for(9), do: 45
+  defp ttl_for(10), do: 600
 end

@@ -1,7 +1,7 @@
 defmodule AppworkCache.UpstreamTest do
   use ExUnit.Case, async: false
 
-  alias AppworkCache.Request
+  alias AppworkCache.{Request, Response}
   alias AppworkCache.Upstreams.UserStore
 
   setup do
@@ -17,7 +17,7 @@ defmodule AppworkCache.UpstreamTest do
     test "returns a seeded user for a known id" do
       req = %Request{id: "users/1"}
 
-      assert {:ok, %{body: %{id: "users/1", name: "User 1", email: "user1@example.com"}}} =
+      assert {:ok, %Response{body: %{id: "users/1", name: "User 1", email: "user1@example.com"}, ttl_seconds: 1}} =
                UserStore.fetch(req)
     end
 
