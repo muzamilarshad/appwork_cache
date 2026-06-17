@@ -1,15 +1,17 @@
 defmodule AppworkCache.Cache.Server do
   @moduledoc """
-  V1 FIFO capped cache with ETS-backed concurrent reads.
+  V2 LRU capped cache with ETS-backed concurrent reads.
 
-  Cache hits read ETS directly. Misses are coordinated through this GenServer,
-  which calls upstream and evicts the oldest entry when capacity is exceeded.
+  Cache hits read ETS directly, then promote the entry via a synchronous
+  GenServer touch. Misses are coordinated through this GenServer, which calls
+  upstream and evicts the least recently used distinct key when capacity is exceeded.
   """
 
   @behaviour AppworkCache.Cache
 
   use GenServer
 
+  alias AppworkCache.Cache.LRU
   alias AppworkCache.{Request, Response}
 
   def start_link(opts) do
@@ -19,7 +21,9 @@ defmodule AppworkCache.Cache.Server do
 
   def stop(name \\ __MODULE__) do
     case Process.whereis(name) do
-      nil -> :ok
+      nil ->
+        :ok
+
       pid ->
         try do
           GenServer.stop(pid)
@@ -47,6 +51,7 @@ defmodule AppworkCache.Cache.Server do
 
     case :ets.lookup(table, hash) do
       [{^hash, %Response{} = response}] ->
+        :ok = GenServer.call(name, {:touch, hash})
         {:ok, response}
 
       [] ->
@@ -69,10 +74,15 @@ defmodule AppworkCache.Cache.Server do
   end
 
   @impl true
+  def handle_call({:touch, hash}, _from, state) do
+    {:reply, :ok, %{state | queue: LRU.touch(state.queue, hash)}}
+  end
+
+  @impl true
   def handle_call({:fetch, request, hash}, _from, state) do
     case :ets.lookup(state.table, hash) do
       [{^hash, %Response{} = response}] ->
-        {:reply, {:ok, response}, state}
+        {:reply, {:ok, response}, %{state | queue: LRU.touch(state.queue, hash)}}
 
       [] ->
         case state.upstream.fetch(request) do
@@ -81,17 +91,16 @@ defmodule AppworkCache.Cache.Server do
 
           {:ok, %Response{} = response} ->
             :ets.insert(state.table, {hash, response})
-            state = evict_if_needed(%{state | queue: state.queue ++ [hash]})
-            {:reply, {:ok, response}, state}
+
+            {:ok, queue, evicted} = LRU.insert(state.queue, hash, state.cap)
+
+            if evicted do
+              :ets.delete(state.table, evicted)
+            end
+
+            {:reply, {:ok, response}, %{state | queue: queue}}
         end
     end
-  end
-
-  defp evict_if_needed(%{cap: cap, queue: queue} = state) when length(queue) <= cap, do: state
-
-  defp evict_if_needed(%{table: table, queue: [oldest | rest]} = state) do
-    :ets.delete(table, oldest)
-    %{state | queue: rest}
   end
 
   defp table_name(name) when is_atom(name), do: :"#{name}.Entries"
