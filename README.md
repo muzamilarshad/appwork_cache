@@ -20,7 +20,7 @@ mix test
 |---------|---------|--------------------------------------|
 | V0      | Done    | Cache and upstream interfaces        |
 | V1      | Done    | Basic capped cache (FIFO) + ETS      |
-| V2      | Pending | LRU eviction on distinct keys        |
+| V2      | Done    | LRU eviction on distinct keys        |
 | V3      | Pending | LRU + TTL expiration                 |
 | V4      | Pending | Near real-time O(1) fetch (optional) |
 
@@ -35,7 +35,13 @@ Architecture notes: [docs/architecture.md](docs/architecture.md)
 
 ## V1 (complete)
 
-- `AppworkCache.Cache.Server` — FIFO capped cache with ETS-backed concurrent reads
+- `AppworkCache.Cache.Server` — capped cache with ETS-backed concurrent reads
 - `AppworkCache.Upstreams.UserStore` — simulated slow user DB (ETS, seeds `users/1`–`users/10`)
-- Cache hits read ETS directly; misses/eviction go through GenServer
+- FIFO eviction (replaced by LRU in V2)
+
+## V2 (complete)
+
+- `AppworkCache.Cache.LRU` — pure LRU queue helpers (`touch/2`, `insert/3`)
+- `Cache.Server` promotes on cache hit via `GenServer.call({:touch, hash})`
+- LRU eviction of distinct keys when capacity exceeded
 - Errors (`{:error, :not_found}`) are not cached

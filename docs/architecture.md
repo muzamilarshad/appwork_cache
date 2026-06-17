@@ -1,18 +1,20 @@
 # Architecture
 
-## Data flow (V1)
+## Data flow (V2)
 
 ```mermaid
 flowchart TB
   Client -->|"fetch(req)"| CacheServer
-  CacheServer -->|"hit"| CacheETS
+  CacheServer -->|"hit: read"| CacheETS
+  CacheServer -->|"hit: touch"| CacheGenServer
   CacheServer -->|"miss"| CacheGenServer
   CacheGenServer -->|"upstream.fetch(req)"| UserStore
   UserStore -->|"sleep + lookup"| UserETS
-  CacheGenServer -->|"insert / FIFO evict"| CacheETS
+  CacheGenServer -->|"insert / LRU evict"| CacheETS
+  CacheGenServer --> LRU
 ```
 
-## Module diagram (V1)
+## Module diagram (V2)
 
 ```mermaid
 classDiagram
@@ -23,6 +25,10 @@ classDiagram
   class CacheServer {
     +fetch(request) ok_or_error
     +child_spec(opts)
+  }
+  class CacheLRU {
+    +touch(queue, hash) queue
+    +insert(queue, hash, cap) ok_queue_evicted
   }
   class UpstreamBehaviour {
     <<behaviour>>
@@ -48,45 +54,46 @@ classDiagram
   }
   CacheServer ..|> CacheBehaviour
   UserStore ..|> UpstreamBehaviour
+  CacheServer ..> CacheLRU
   CacheServer ..> CacheETS
   CacheServer ..> UserStore
   UserStore ..> UserETS
-  CacheServer ..> Request
-  CacheServer ..> Response
-  UserStore ..> Request
-  UserStore ..> Response
 ```
 
-## V1 design notes
+## V2 design notes
 
 ### Request key vs hash
 
 The logical cache key is the **request struct**. `Request.hash/1` provides an
 integer storage key in cache ETS (`{hash, %Response{}}`).
 
-### FIFO eviction
+### LRU eviction
 
-`Cache.Server` keeps a FIFO `queue` of hashes in GenServer state (insertion order).
-On cache **hit**, the queue is **not** reordered. When capacity is exceeded, the
-oldest hash in the queue is removed from both the queue and cache ETS.
+`AppworkCache.Cache.LRU` maintains a queue of distinct hashes: front = least
+recently used, back = most recently used.
+
+- On **hit:** ETS read, then `GenServer.call({:touch, hash})` promotes the key.
+- On **miss:** after upstream insert, `LRU.insert/3` promotes and evicts the
+  front when `length(queue) > cap`.
+
+`GenServer.call` (not `cast`) for touches serializes queue updates with concurrent
+misses/evictions.
+
+V1 used FIFO (insertion order, no promotion on hit). V2 replaces that with LRU.
 
 ### Concurrency
 
-- **Hits:** `fetch/1` reads cache ETS directly (`read_concurrency: true`).
-- **Misses:** coordinated through the GenServer (upstream call, insert, eviction).
+- **Hits:** `fetch/1` reads cache ETS directly, then synchronously touches LRU.
+- **Misses:** coordinated through the GenServer (double-check ETS, upstream, insert, eviction).
 
 ### Error handling
 
 Both cache and upstream return `{:ok, %Response{}}` or `{:error, term()}`.
 Upstream `{:error, :not_found}` responses are **not** cached.
 
-`UserStore.call_count/0` counts successful upstream lookups.
-`UserStore.request_count/0` counts all upstream fetch attempts (used to verify
-errors are not cached).
-
 ## How to read the diagram
 
-- **Cache.Server** — V1 FIFO cache implementation.
+- **Cache.Server** — V2 LRU cache implementation.
+- **Cache.LRU** — pure queue helpers (`touch/2`, `insert/3`).
 - **UserStore** — simulated slow user DB (ETS + sleep), seeds `users/1`–`users/10`.
 - **Cache ETS** — cached responses keyed by `Request.hash/1`.
-- **User ETS** — seeded upstream data keyed by request `id`.
