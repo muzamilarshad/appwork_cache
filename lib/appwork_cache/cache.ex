@@ -10,8 +10,10 @@ defmodule AppworkCache.Cache do
   passed into `fetch/1` — matching the assignment's identical interface.
   """
 
-  @type request :: term()
-  @type response :: term()
+  alias AppworkCache.{Request, Response}
+
+  @type request :: Request.t()
+  @type response :: Response.t()
 
   @callback child_spec(keyword()) :: Supervisor.child_spec()
 

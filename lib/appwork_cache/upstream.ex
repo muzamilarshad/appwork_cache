@@ -6,8 +6,10 @@ defmodule AppworkCache.Upstream do
   `fetch(request) -> response` contract.
   """
 
-  @type request :: term()
-  @type response :: term()
+  alias AppworkCache.{Request, Response}
+
+  @type request :: Request.t()
+  @type response :: Response.t()
 
   @callback fetch(request()) :: response()
 end

@@ -1,18 +1,8 @@
 defmodule AppworkCache do
   @moduledoc """
-  Documentation for `AppworkCache`.
+  LRU + TTL cache that wraps a slow upstream with `fetch(request) -> response`.
+
+  See `AppworkCache.Cache`, `AppworkCache.Upstream`, `AppworkCache.Request`,
+  and `AppworkCache.Response` for the V0 interfaces.
   """
-
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> AppworkCache.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
 end
