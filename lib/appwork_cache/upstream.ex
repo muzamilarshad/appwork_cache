@@ -3,13 +3,13 @@ defmodule AppworkCache.Upstream do
   Behaviour for the slow upstream service the cache wraps.
 
   The cache calls upstream only on a miss. Both expose the same
-  `fetch(request) -> response` contract.
+  `fetch(request)` contract, returning `{:ok, response}` or `{:error, term}`.
   """
 
   alias AppworkCache.{Request, Response}
 
   @type request :: Request.t()
-  @type response :: Response.t()
+  @type fetch_result :: {:ok, Response.t()} | {:error, term()}
 
-  @callback fetch(request()) :: response()
+  @callback fetch(request()) :: fetch_result()
 end
