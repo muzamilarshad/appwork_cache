@@ -14,11 +14,13 @@ defmodule AppworkCache.Cache.Server do
   alias AppworkCache.Cache.{Entry, LRU}
   alias AppworkCache.{Request, Response}
 
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
+  @spec stop(atom()) :: :ok
   def stop(name \\ __MODULE__) do
     case Process.whereis(name) do
       nil ->
@@ -44,6 +46,7 @@ defmodule AppworkCache.Cache.Server do
   end
 
   @impl AppworkCache.Cache
+  @spec fetch(Request.t()) :: AppworkCache.Cache.fetch_result()
   def fetch(%Request{} = request) do
     name = __MODULE__
     table = table_name(name)

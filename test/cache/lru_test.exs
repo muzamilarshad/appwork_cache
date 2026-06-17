@@ -28,13 +28,4 @@ defmodule AppworkCache.Cache.LRUTest do
     end
   end
 
-  describe "evict_lru/1" do
-    test "returns empty queue and nil when empty" do
-      assert {[], nil} = LRU.evict_lru([])
-    end
-
-    test "removes the front entry" do
-      assert {[:b, :c], :a} = LRU.evict_lru([:a, :b, :c])
-    end
-  end
 end

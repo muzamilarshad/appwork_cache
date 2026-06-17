@@ -17,7 +17,11 @@ defmodule AppworkCache.UpstreamTest do
     test "returns a seeded user for a known id" do
       req = %Request{id: "users/1"}
 
-      assert {:ok, %Response{body: %{id: "users/1", name: "User 1", email: "user1@example.com"}, ttl_seconds: 1}} =
+      assert {:ok,
+              %Response{
+                body: %{id: "users/1", name: "User 1", email: "user1@example.com"},
+                ttl_seconds: 1
+              }} =
                UserStore.fetch(req)
     end
 

@@ -43,11 +43,7 @@ defmodule AppworkCache.Cache.LRU do
   @spec remove(queue(), hash()) :: queue()
   def remove(queue, hash), do: List.delete(queue, hash)
 
-  @doc """
-  Removes and returns the least recently used hash (front of queue).
-  """
-  @spec evict_lru(queue()) :: {queue(), hash() | nil}
-  def evict_lru([]), do: {[], nil}
+  defp evict_lru([]), do: {[], nil}
 
-  def evict_lru([lru | rest]), do: {rest, lru}
+  defp evict_lru([lru | rest]), do: {rest, lru}
 end
