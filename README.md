@@ -1,7 +1,7 @@
 # AppworkCache
 
 LRU + TTL cache exercise for AppWork. Wraps a slow upstream service with a
-concurrent `fetch/2` interface.
+concurrent `fetch/1` interface.
 
 ## Requirements
 
@@ -18,7 +18,7 @@ mix test
 
 | Version | Status  | Description                          |
 |---------|---------|--------------------------------------|
-| V0      | Pending | Cache and upstream interfaces        |
+| V0      | In progress | Cache and upstream interfaces    |
 | V1      | Pending | Basic capped cache (FIFO)            |
 | V2      | Pending | LRU eviction on distinct keys        |
 | V3      | Pending | LRU + TTL expiration                 |
