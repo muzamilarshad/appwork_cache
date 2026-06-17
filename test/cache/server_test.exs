@@ -97,5 +97,33 @@ defmodule AppworkCache.Cache.ServerTest do
       assert Enum.all?(results, &match?({:ok, _}, &1))
       assert UserStore.call_count() == 1
     end
+
+    test "cache hit within TTL avoids upstream" do
+      assert {:ok, _} = Server.fetch(req("users/2"))
+      assert {:ok, _} = Server.fetch(req("users/2"))
+
+      assert UserStore.call_count() == 1
+    end
+
+    test "expired entry refetches from upstream" do
+      assert {:ok, _} = Server.fetch(req("users/1"))
+      assert UserStore.call_count() == 1
+
+      Process.sleep(1_100)
+
+      assert {:ok, _} = Server.fetch(req("users/1"))
+      assert UserStore.call_count() == 2
+    end
+
+    test "expired entry is removed from cache on fetch" do
+      assert {:ok, _} = Server.fetch(req("users/1"))
+
+      Process.sleep(1_100)
+
+      assert {:ok, _} = Server.fetch(req("users/1"))
+      assert {:ok, _} = Server.fetch(req("users/1"))
+
+      assert UserStore.call_count() == 2
+    end
   end
 end
